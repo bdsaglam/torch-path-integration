@@ -1,0 +1,38 @@
+model:
+  dim_vel: 4
+  n_place_cells: 256
+  n_hd_cells: 12
+  lstm_hidden_size: 256
+  grid_layer_size: 256
+  grid_layer_dropout_rate: 0.5
+
+loss:
+  grid_l2_loss_weight: 0.0
+
+place_cell_ensemble:
+  n_cells: 256
+  std: 0.01
+
+head_direction_cell_ensemble:
+  n_cells: 12
+  kappa: 20
+
+# data params
+dataset_type: "westworld"
+data_dir: "/Users/bdsaglam/westworld-data/oneroom-64x64-s31"
+batch_size: 32
+num_workers: 2
+
+# optimizer params
+optimizer_type: RMSprop
+learning_rate: 0.001
+weight_decay: 0.00001
+look_ahead: False
+look_ahead_k: 5
+look_ahead_alpha: 0.5
+use_lr_scheduler: False
+lr_scheduler_decay_rate: 0.95
+
+# trainer params
+trainer:
+  gradient_clip_val: 0
