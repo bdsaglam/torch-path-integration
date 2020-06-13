@@ -8,7 +8,7 @@ class PlaceCellEnsemble:
     def __init__(self, n_cells, std):
         super().__init__()
         self.n_cells = n_cells
-        self.centers = torch.rand(n_cells, 2)  # (N, 2)
+        self.centers = 2 * torch.rand(n_cells, 2) - 1  # (N, 2)
         self.var = std ** 2
 
     def encode(self, location):  # (B, 2)

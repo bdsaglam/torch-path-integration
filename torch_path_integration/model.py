@@ -2,13 +2,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from torch_path_integration.utils import init_trunc_normal
+
 
 class PathIntegrationModule(nn.Module):
     def __init__(self,
                  dim_vel,
                  n_place_cells,
                  n_hd_cells,
-                 lstm_hidden_size=256,
+                 lstm_hidden_size=128,
                  grid_layer_size=256,
                  grid_layer_dropout_rate=0.5,
                  ):
@@ -26,6 +28,18 @@ class PathIntegrationModule(nn.Module):
 
         self.initial_hx = nn.Linear(n_place_cells + n_hd_cells, lstm_hidden_size)
         self.initial_cx = nn.Linear(n_place_cells + n_hd_cells, lstm_hidden_size)
+
+        with torch.no_grad():
+            init_trunc_normal(self.initial_hx.weight, lstm_hidden_size)
+            init_trunc_normal(self.initial_cx.weight, lstm_hidden_size)
+            init_trunc_normal(self.grid_layer.weight, grid_layer_size)
+            init_trunc_normal(self.place_layer.weight, n_place_cells)
+            init_trunc_normal(self.head_direction_layer.weight, n_hd_cells)
+
+            nn.init.zeros_(self.initial_hx.bias)
+            nn.init.zeros_(self.initial_cx.bias)
+            nn.init.zeros_(self.place_layer.bias)
+            nn.init.zeros_(self.head_direction_layer.bias)
 
     def initial_hidden_state(self, place, head_direction):
         x = torch.cat([place, head_direction], -1)

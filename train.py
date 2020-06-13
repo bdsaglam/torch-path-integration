@@ -175,13 +175,14 @@ class PIMExperiment(LightningModule):
 
     def validation_epoch_end(self, outputs):
         avg_val_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
+        log = {'val_loss': avg_val_loss}
 
         # log predictions
         batch = outputs[0]['batch']
         res = outputs[0]['res']
         self.visualize_episode(batch, res)
 
-        return {'val_loss': avg_val_loss}
+        return {'val_loss': avg_val_loss, 'log': log}
 
     def visualize_episode(self, batch, res):
         # (B, 1, 2), (B, 1, 1), (B, T, A), (B, T, 2), (B, T, 1)
@@ -190,19 +191,20 @@ class PIMExperiment(LightningModule):
         T = res.place.shape[1]
         pred_location = self.pce.decode(res.place[:B].view(B * T, -1)).view(B, T, -1).detach().numpy()
 
-        loc_fig = self.plot_location_predictions(pred_location, target_location[:B])
+        loc_fig = self.plot_location_predictions(initial_location[:B], pred_location, target_location[:B])
         loc_vis = utils.fig_to_tensor(loc_fig)
         self.logger.experiment.add_image('location', loc_vis, self.current_epoch)
 
-    def plot_location_predictions(self, prediction, target):
+    def plot_location_predictions(self, initial_location, prediction, target):
         batch_size = prediction.shape[0]
         fig, axes = plt.subplots(nrows=batch_size, ncols=1, figsize=(4, batch_size * 4))
         for i in range(batch_size):
             ax = axes[i] if batch_size > 1 else axes
-            ax.scatter(target[i, :, 0], target[i, :, 1], c='blue')
-            ax.scatter(prediction[i, :, 0], prediction[i, :, 1], c='red')
-            ax.set_xlim((0, 1))
-            ax.set_ylim((0, 1))
+            ax.scatter(initial_location[i, :, 0], initial_location[i, :, 1], c='black', marker='x')
+            ax.scatter(target[i, :, 0], target[i, :, 1], c='blue', s=10)
+            ax.scatter(prediction[i, :, 0], prediction[i, :, 1], c='red', s=10)
+            ax.set_xlim((-1, 1))
+            ax.set_ylim((-1, 1))
             ax.invert_yaxis()
         return fig
 

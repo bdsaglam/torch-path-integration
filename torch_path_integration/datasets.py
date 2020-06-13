@@ -3,6 +3,7 @@ import pathlib
 import random
 
 import matplotlib
+import pandas as pd
 
 matplotlib.use('TkAgg')
 
@@ -29,19 +30,19 @@ class MouseDataset(Dataset):
         # Load data and get label
         index = index % self.num_records_per_file
 
-        loaded_data = self.loaded_data()
-        initial_location = self.normalize_location(torch.tensor(loaded_data['init_pos'][index]).unsqueeze(0))  # (1, 2)
-        initial_orientation = torch.tensor(loaded_data['init_hd'][index]).unsqueeze(0)  # (1, 1)
+        bulk = self.loaded_data()
+        initial_location = self.normalize_location(torch.tensor(bulk['init_pos'][index]).unsqueeze(0))  # (1, 2)
+        initial_orientation = torch.tensor(bulk['init_hd'][index]).unsqueeze(0)  # (1, 1)
         # (T, 3), (u., sin(φ.), cos(φ.))
-        velocity = self.normalize_velocity(torch.tensor(loaded_data['ego_vel'][index]))
+        velocity = self.normalize_velocity(torch.tensor(bulk['ego_vel'][index]))
 
-        target_location = self.normalize_location(torch.tensor(loaded_data['target_pos'][index]))  # (T, 2)
-        target_orientation = torch.tensor(loaded_data['target_hd'][index])  # (T, 1), [-π, π]
+        target_location = self.normalize_location(torch.tensor(bulk['target_pos'][index]))  # (T, 2)
+        target_orientation = torch.tensor(bulk['target_hd'][index])  # (T, 1), [-π, π]
 
         return (initial_location, initial_orientation, velocity), (target_location, target_orientation)
 
     def normalize_location(self, x):
-        return (x / (self.env_size / 2) + 1) / 2
+        return x / self.env_size
 
     def normalize_velocity(self, v):
         return v / torch.tensor([self.env_size, 1, 1])
@@ -64,33 +65,31 @@ class WestWorldDataset(Dataset):
         self.env_width = config['width']
         self.action_space_dim = config['action_space_dim']
 
-        self.episodes = sorted([p.stem for p in (self.root / 'images').glob('*') if p.is_dir()])
+        self.action_files = sorted(list((self.root / 'actions').glob('*.csv')))
+        self.pose_files = sorted(list((self.root / 'poses').glob('*.csv')))
+        assert len(self.action_files) == len(self.pose_files)
 
     def __len__(self):
-        return len(self.episodes)
+        return len(self.action_files)
 
     def __getitem__(self, index):
-        episode = self.episodes[index]
+        action_file = self.action_files[index]
+        pose_file = self.pose_files[index]
+        assert action_file.stem == pose_file.stem
 
         # action
-        action_dir = self.root / 'actions' / episode
-        action_filepaths = list(action_dir.glob("*.txt"))
-        actions = [torch.tensor(int(fp.read_text()), dtype=torch.int64)
-                   for fp in action_filepaths]
-        action = F.one_hot(torch.stack(actions, 0), self.action_space_dim).float()  # (T + 1, A)
+        action = [int(line) for line in action_file.read_text().splitlines()[1:]]
+        action = torch.tensor(action, dtype=torch.int64)
+        action = F.one_hot(action, self.action_space_dim).float()  # (T + 1, A)
 
         # pose
-        pose_dir = self.root / 'poses' / episode
-        pose_filepaths = [pose_dir / (fp.stem + '.txt') for fp in action_filepaths]
-        poses = [[float(field) for field in fp.read_text().split(' ')]
-                 for fp in pose_filepaths]
-
-        x, _, z, o = list(zip(*poses))
-        x = torch.tensor(x) / self.env_width
-        z = torch.tensor(z) / self.env_height
+        df = pd.read_csv(pose_file)
+        x, z, phi = df['x'].values, df['z'].values, df['phi'].values
+        x = 2 * torch.tensor(x, dtype=torch.float32) / self.env_width - 1
+        z = 2 * torch.tensor(z, dtype=torch.float32) / self.env_height - 1
         location = torch.stack([x, z], 1)  # (T + 1, 2)
 
-        orientation = torch.tensor(o).unsqueeze(-1)  # (T + 1, 1)
+        orientation = torch.tensor(phi, dtype=torch.float32).unsqueeze(-1)  # (T + 1, 1)
         mask = orientation > np.pi
         orientation[mask] = orientation[mask] - 2 * np.pi
 
