@@ -17,8 +17,13 @@ class PlaceCellEnsemble:
         prob = F.softmax(unnormalized_log_prob, dim=-1)  # (B, N)
         return prob
 
-    def decode(self, prob):  # (B, N)
-        return prob @ self.centers
+    def decode(self, prob, strategy='soft'):  # (B, N)
+        if strategy == 'soft':
+            return prob @ self.centers
+        if strategy == 'hard':
+            return self.centers[prob.argmax(-1)]
+
+        raise ValueError("Unknown strategy.")
 
 
 class HeadDirectionCellEnsemble:
@@ -33,5 +38,10 @@ class HeadDirectionCellEnsemble:
         prob = F.softmax(unnormalized_log_prob, dim=-1)  # (B, N)
         return prob
 
-    def decode(self, prob):  # (B, N)
-        return prob @ self.centers
+    def decode(self, prob, strategy='soft'):  # (B, N)
+        if strategy == 'soft':
+            return prob @ self.centers
+        if strategy == 'hard':
+            return self.centers[prob.argmax(-1)]
+
+        raise ValueError("Unknown strategy.")

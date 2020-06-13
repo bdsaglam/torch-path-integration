@@ -31,13 +31,13 @@ class MouseDataset(Dataset):
         index = index % self.num_records_per_file
 
         bulk = self.loaded_data()
-        initial_location = self.normalize_location(torch.tensor(bulk['init_pos'][index]).unsqueeze(0))  # (1, 2)
-        initial_orientation = torch.tensor(bulk['init_hd'][index]).unsqueeze(0)  # (1, 1)
+        initial_location = self.normalize_location(bulk['init_pos'][index].unsqueeze(0))  # (1, 2)
+        initial_orientation = bulk['init_hd'][index].unsqueeze(0)  # (1, 1)
         # (T, 3), (u., sin(φ.), cos(φ.))
-        velocity = self.normalize_velocity(torch.tensor(bulk['ego_vel'][index]))
+        velocity = self.normalize_velocity(bulk['ego_vel'][index])
 
-        target_location = self.normalize_location(torch.tensor(bulk['target_pos'][index]))  # (T, 2)
-        target_orientation = torch.tensor(bulk['target_hd'][index])  # (T, 1), [-π, π]
+        target_location = self.normalize_location(bulk['target_pos'][index])  # (T, 2)
+        target_orientation = bulk['target_hd'][index]  # (T, 1), [-π, π]
 
         return (initial_location, initial_orientation, velocity), (target_location, target_orientation)
 

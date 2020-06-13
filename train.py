@@ -142,13 +142,13 @@ class PIMExperiment(LightningModule):
             target_place=target_place,
             target_hd=target_hd,
             grid=grid,
-            place=place,
-            hd=hd,
+            place_log_prob=place,
+            hd_log_prob=hd,
         )
 
     def loss(self, res):
-        loss_pc = F.kl_div(res.place.log(), res.target_place)
-        loss_hdc = F.kl_div(res.hd.log(), res.target_hd)
+        loss_pc = F.kl_div(res.place_log_prob, res.target_place, reduction='batchmean')
+        loss_hdc = F.kl_div(res.hd_log_prob, res.target_hd, reduction='batchmean')
         loss_reg = self.hparams.loss['grid_l2_loss_weight'] * self.model.reg_loss()
         loss = loss_pc + loss_hdc + loss_reg
         return AttrDict(loss=loss, loss_pc=loss_pc, loss_hdc=loss_hdc, loss_reg=loss_reg)
@@ -187,13 +187,20 @@ class PIMExperiment(LightningModule):
     def visualize_episode(self, batch, res):
         # (B, 1, 2), (B, 1, 1), (B, T, A), (B, T, 2), (B, T, 1)
         (initial_location, initial_orientation, velocity), (target_location, target_orientation) = batch
-        B = min(8, res.place.shape[0])
-        T = res.place.shape[1]
-        pred_location = self.pce.decode(res.place[:B].view(B * T, -1)).view(B, T, -1).detach().numpy()
+        B = min(8, target_location.shape[0])
+        T = target_location.shape[1]
 
-        loc_fig = self.plot_location_predictions(initial_location[:B], pred_location, target_location[:B])
-        loc_vis = utils.fig_to_tensor(loc_fig)
-        self.logger.experiment.add_image('location', loc_vis, self.current_epoch)
+        place_prob = res.place_log_prob[:B].exp()
+
+        soft_pred_location = self.pce.decode(place_prob.view(B * T, -1), strategy='soft') \
+            .view(B, T, -1).detach().numpy()
+        loc_vis = self.plot_location_predictions(initial_location[:B], soft_pred_location, target_location[:B])
+        self.logger.experiment.add_image('location_soft', loc_vis, self.current_epoch)
+
+        hard_pred_location = self.pce.decode(place_prob.view(B * T, -1), strategy='hard') \
+            .view(B, T, -1).detach().numpy()
+        hard_loc_vis = self.plot_location_predictions(initial_location[:B], hard_pred_location, target_location[:B])
+        self.logger.experiment.add_image('location_hard', hard_loc_vis, self.current_epoch)
 
     def plot_location_predictions(self, initial_location, prediction, target):
         batch_size = prediction.shape[0]
@@ -201,12 +208,14 @@ class PIMExperiment(LightningModule):
         for i in range(batch_size):
             ax = axes[i] if batch_size > 1 else axes
             ax.scatter(initial_location[i, :, 0], initial_location[i, :, 1], c='black', marker='x')
-            ax.scatter(target[i, :, 0], target[i, :, 1], c='blue', s=10)
-            ax.scatter(prediction[i, :, 0], prediction[i, :, 1], c='red', s=10)
+            ax.plot(target[i, :, 0], target[i, :, 1], c='blue', marker='.')
+            ax.plot(prediction[i, :, 0], prediction[i, :, 1], c='red', marker='.')
             ax.set_xlim((-1, 1))
             ax.set_ylim((-1, 1))
             ax.invert_yaxis()
-        return fig
+        img = utils.fig_to_tensor(fig)
+        plt.close(fig)
+        return img
 
 
 if __name__ == '__main__':

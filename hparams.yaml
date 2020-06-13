@@ -2,7 +2,7 @@ model:
   dim_vel: 4
   n_place_cells: 256
   n_hd_cells: 12
-  lstm_hidden_size: 256
+  lstm_hidden_size: 128
   grid_layer_size: 256
   grid_layer_dropout_rate: 0.5
 
@@ -20,12 +20,12 @@ head_direction_cell_ensemble:
 # data params
 dataset_type: "westworld"
 data_dir: "/Users/bdsaglam/westworld-data/oneroom-64x64-s31"
-batch_size: 32
+batch_size: 256
 num_workers: 2
 
 # optimizer params
 optimizer_type: RMSprop
-learning_rate: 0.001
+learning_rate: 0.0001
 weight_decay: 0.00001
 look_ahead: False
 look_ahead_k: 5
@@ -35,4 +35,6 @@ lr_scheduler_decay_rate: 0.95
 
 # trainer params
 trainer:
+  max_epochs: 500
   gradient_clip_val: 0
+#  resume_from_checkpoint: "/Users/bdsaglam/PycharmProjects/torch-path-integration/lightning_logs/version_1/checkpoints/epoch=299.ckpt"

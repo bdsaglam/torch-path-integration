@@ -52,10 +52,10 @@ class PathIntegrationModule(nn.Module):
 
         hx, cx = self.lstm_cell(velocity, hidden_state)
         grid_activations = self.dropout(self.grid_layer(hx))
-        place = F.softmax(self.place_layer(grid_activations), -1)
-        head_direction = F.softmax(self.head_direction_layer(grid_activations), -1)
+        place_log_prob = F.log_softmax(self.place_layer(grid_activations), -1)
+        head_direction_log_prob = F.log_softmax(self.head_direction_layer(grid_activations), -1)
 
-        return grid_activations, place, head_direction, (hx, cx)
+        return grid_activations, place_log_prob, head_direction_log_prob, (hx, cx)
 
     def reg_loss(self):
         return self.grid_layer.weight.norm(2)
