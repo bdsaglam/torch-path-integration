@@ -95,8 +95,9 @@ class WestWorldDataset(Dataset):
 
         initial_location = location[:1]  # (1, 2)
         initial_orientation = orientation[:1]  # (1, 1)
-        velocity = action[:-1]  # (T, A)
 
+        # skip first time step
+        velocity = action[1:]  # (T, A)
         target_location = location[1:]  # (T, 2)
         target_orientation = orientation[1:]  # (T, 1)
 

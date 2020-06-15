@@ -18,6 +18,7 @@ from torch_path_integration.datasets import WestWorldDataset, MouseDataset
 from torch_path_integration.ensembles import PlaceCellEnsemble, HeadDirectionCellEnsemble
 from torch_path_integration.model import PathIntegrationModule
 from torch_path_integration.optimizers import RAdam, LookAhead
+from torch_path_integration.visualization import plot_location_predictions
 
 Tensor = torch.Tensor
 
@@ -194,28 +195,17 @@ class PIMExperiment(LightningModule):
 
         soft_pred_location = self.pce.decode(place_prob.view(B * T, -1), strategy='soft') \
             .view(B, T, -1).detach().numpy()
-        loc_vis = self.plot_location_predictions(initial_location[:B], soft_pred_location, target_location[:B])
+        loc_fig = plot_location_predictions(initial_location[:B], soft_pred_location, target_location[:B])
+        loc_vis = utils.fig_to_tensor(loc_fig)
+        plt.close(loc_fig)
         self.logger.experiment.add_image('location_soft', loc_vis, self.current_epoch)
 
         hard_pred_location = self.pce.decode(place_prob.view(B * T, -1), strategy='hard') \
             .view(B, T, -1).detach().numpy()
-        hard_loc_vis = self.plot_location_predictions(initial_location[:B], hard_pred_location, target_location[:B])
+        hard_loc_fig = plot_location_predictions(initial_location[:B], hard_pred_location, target_location[:B])
+        hard_loc_vis = utils.fig_to_tensor(hard_loc_fig)
+        plt.close(hard_loc_fig)
         self.logger.experiment.add_image('location_hard', hard_loc_vis, self.current_epoch)
-
-    def plot_location_predictions(self, initial_location, prediction, target):
-        batch_size = prediction.shape[0]
-        fig, axes = plt.subplots(nrows=batch_size, ncols=1, figsize=(4, batch_size * 4))
-        for i in range(batch_size):
-            ax = axes[i] if batch_size > 1 else axes
-            ax.scatter(initial_location[i, :, 0], initial_location[i, :, 1], c='black', marker='x')
-            ax.plot(target[i, :, 0], target[i, :, 1], c='blue', marker='.')
-            ax.plot(prediction[i, :, 0], prediction[i, :, 1], c='red', marker='.')
-            ax.set_xlim((-1, 1))
-            ax.set_ylim((-1, 1))
-            ax.invert_yaxis()
-        img = utils.fig_to_tensor(fig)
-        plt.close(fig)
-        return img
 
 
 if __name__ == '__main__':
