@@ -56,9 +56,9 @@ class ContextAwareStepIntegrator(nn.Module):
 
 
 class ContextAwarePathIntegrator(nn.Module):
-    def __init__(self, action_dim):
+    def __init__(self, action_dim, hidden_dims=(32, 32)):
         super().__init__()
-        self.step_integrator = ContextAwareStepIntegrator(action_dim)
+        self.step_integrator = ContextAwareStepIntegrator(action_dim, hidden_dims)
 
     def forward(self, t_init, action, t_direct=None, mask=None):
         """
