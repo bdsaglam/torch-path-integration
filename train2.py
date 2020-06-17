@@ -30,6 +30,7 @@ class PIMExperiment2(LightningModule):
         self.hparams = hparams
         self.model = ContextAwarePathIntegrator(**hparams.model)
         self.path_vis = self.make_path_visualizer()
+        self.mask_cache = []
 
     def make_path_visualizer(self):
         bg_image = None
@@ -49,10 +50,13 @@ class PIMExperiment2(LightningModule):
             alpha = np.full((h, w, 1), fill_value=100)
             bg_image = np.concatenate([crop_img, alpha], -1)
 
-        pv = PathVisualizer(figsize_per_example=(6, 6),
-                            background_image=bg_image,
-                            marker_cycle=['.', 'o', '^'],
-                            color_cycle=['white', 'red', 'green'])
+        pv = PathVisualizer(
+            rect=(-1, 1, 1, -1),
+            figsize_per_example=(6, 6),
+            bg_image=bg_image,
+            marker_cycle=['.', '^', '.'],
+            color_cycle=['blue', 'green', 'red'],
+        )
         return pv
 
     @staticmethod
@@ -133,7 +137,18 @@ class PIMExperiment2(LightningModule):
                           batch_size=self.hparams.batch_size,
                           num_workers=self.hparams.num_workers)
 
-    def inference(self, batch):
+    def get_mask(self, batch, batch_idx):
+        if len(self.mask_cache) > batch_idx:
+            return self.mask_cache[batch_idx]
+
+        T = batch[0][2].shape[1]
+        B = self.hparams.batch_size
+
+        mask = torch.rand(B, T) < 0.2  # (B, T)
+        self.mask_cache.append(mask)
+        return mask
+
+    def inference(self, batch, batch_idx):
         # (B, 1, 2), (B, 1, 1), (B, T, A), (B, T, 2), (B, T, 1)
         (initial_location, initial_orientation, action), (target_location, target_orientation) = batch
         B, T = target_location.shape[:2]
@@ -150,7 +165,7 @@ class PIMExperiment2(LightningModule):
             trans_x=target_location[:, :, 0],
             trans_y=target_location[:, :, 1],
         )
-        mask = torch.rand(B, T) < 0.2  # (B, T)
+        mask = self.get_mask(batch, batch_idx)[:B]
         t_out = self.model(t_init, action, t_target, mask)
 
         return AttrDict(t_out=t_out,
@@ -163,7 +178,7 @@ class PIMExperiment2(LightningModule):
         return F.mse_loss(res.t_out, t_target)
 
     def training_step(self, batch, batch_idx):
-        res = self.inference(batch)
+        res = self.inference(batch, batch_idx)
         loss = self.loss(res)
 
         log = dict(
@@ -172,7 +187,7 @@ class PIMExperiment2(LightningModule):
         return dict(loss=loss, log=log)
 
     def validation_step(self, batch, batch_idx):
-        res = self.inference(batch)
+        res = self.inference(batch, batch_idx)
         loss = self.loss(res)
         out = dict(val_loss=loss)
         if batch_idx == 0:
@@ -204,7 +219,7 @@ class PIMExperiment2(LightningModule):
 
         mask_path_list = [target_location[i, res.mask[i, :]].numpy() for i in range(B)]
 
-        loc_fig = self.path_vis.plot(gt_path, pred_path, mask_path_list)
+        loc_fig = self.path_vis.plot(gt_path, mask_path_list, pred_path)
         loc_vis = visualization.fig_to_tensor(loc_fig)
         plt.close(loc_fig)
         self.logger.experiment.add_image('paths', loc_vis, self.current_epoch)
