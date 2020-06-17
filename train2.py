@@ -49,7 +49,10 @@ class PIMExperiment2(LightningModule):
             alpha = np.full((h, w, 1), fill_value=100)
             bg_image = np.concatenate([crop_img, alpha], -1)
 
-        pv = PathVisualizer(background_image=bg_image, figsize_per_example=(6, 6))
+        pv = PathVisualizer(figsize_per_example=(6, 6),
+                            background_image=bg_image,
+                            marker_cycle=['.', 'o', '^'],
+                            color_cycle=['white', 'red', 'green'])
         return pv
 
     @staticmethod
@@ -151,6 +154,7 @@ class PIMExperiment2(LightningModule):
         t_out = self.model(t_init, action, t_target, mask)
 
         return AttrDict(t_out=t_out,
+                        mask=mask,
                         target_orientation=target_orientation,
                         target_location=target_location)
 
@@ -198,7 +202,9 @@ class PIMExperiment2(LightningModule):
 
         gt_path = torch.cat([initial_location[:B], target_location[:B]], 1).numpy()
 
-        loc_fig = self.path_vis.plot(gt_path, pred_path)
+        mask_path_list = [target_location[i, res.mask[i, :]].numpy() for i in range(B)]
+
+        loc_fig = self.path_vis.plot(gt_path, pred_path, mask_path_list)
         loc_vis = visualization.fig_to_tensor(loc_fig)
         plt.close(loc_fig)
         self.logger.experiment.add_image('paths', loc_vis, self.current_epoch)
