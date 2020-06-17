@@ -197,6 +197,7 @@ class PIMExperiment(LightningModule):
         loc_fig = plot_location_predictions(initial_location[:B], soft_pred_location, target_location[:B])
         loc_vis = fig_to_tensor(loc_fig)
         plt.close(loc_fig)
+
         self.logger.experiment.add_image('location_soft', loc_vis, self.current_epoch)
 
         hard_pred_location = self.pce.decode(place_prob.view(B * T, -1), strategy='hard') \

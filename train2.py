@@ -155,15 +155,15 @@ class PIMExperiment2(LightningModule):
 
         # (B, 1, 3, 3)
         t_init = cv_ops.affine_transform_2d(
-            rotation=initial_orientation[:, :, 0],
-            trans_x=initial_location[:, :, 0],
-            trans_y=initial_location[:, :, 1],
+            rotation=initial_orientation,
+            trans_x=initial_location[:, :, 0:1],
+            trans_y=initial_location[:, :, 1:2],
         )
         # (B, T, 3, 3)
         t_target = cv_ops.affine_transform_2d(
-            rotation=target_orientation[:, :, 0],
-            trans_x=target_location[:, :, 0],
-            trans_y=target_location[:, :, 1],
+            rotation=target_orientation,
+            trans_x=target_location[:, :, 0:1],
+            trans_y=target_location[:, :, 1:2],
         )
         mask = self.get_mask(batch, batch_idx)[:B]
         t_out = self.model(t_init, action, t_target, mask)
@@ -213,7 +213,7 @@ class PIMExperiment2(LightningModule):
         T = target_location.shape[1]
 
         rot, sx, sy, sh, tx, ty = cv_ops.decompose_transformation_matrix(res.t_out[:B])
-        pred_path = torch.stack([tx, ty], -1).detach().numpy()
+        pred_path = torch.cat([tx, ty], -1).detach().numpy()
 
         gt_path = torch.cat([initial_location[:B], target_location[:B]], 1).numpy()
 

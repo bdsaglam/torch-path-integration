@@ -13,13 +13,13 @@ class ActionPoseEstimator(nn.Module):
         self.linear = nn.Linear(action_dim, 3)
 
     def forward(self, action):
-        delta = self.linear(action)
-        drot, dx, dy = delta[..., 0], delta[..., 1], delta[..., 2]
+        pose = self.linear(action)
+        drot, dx, dy = pose.split(1, -1)
         return drot * np.pi, dx, dy
 
 
 class ContextAwareStepIntegrator(nn.Module):
-    def __init__(self, action_dim, hidden_dims=(32, )):
+    def __init__(self, action_dim, hidden_dims=(32,)):
         super().__init__()
         self.action_pose_estimator = ActionPoseEstimator(action_dim)
 
@@ -37,25 +37,24 @@ class ContextAwareStepIntegrator(nn.Module):
         :return: torch.tensor, [B, 3, 3], estimated transformation matrix
         """
 
-        pose_in = cv_ops.remove_homogenous(t_in)  # (B, 6)
+        pose_in = cv_ops.remove_homogeneous(t_in)  # (B, 6)
 
-        drot, dx, dy = self.action_pose_estimator(action)  # (B, ), (B, ), (B, )
+        drot, dx, dy = self.action_pose_estimator(action)  # (B, 1), (B, 1), (B, 1)
         t_a = cv_ops.affine_transform_2d(rotation=drot, trans_x=dx, trans_y=dy)  # (B, 3, 3)
-        pose_act = cv_ops.remove_homogenous(t_a)  # (B, 6)
+        pose_act = cv_ops.remove_homogeneous(t_a)  # (B, 6)
 
         pose = torch.cat([pose_in, pose_act], -1)  # (B, 12)
 
         rot, tx, ty = self.context_pose_estimator(pose).split(1, -1)  # (B, 1), (B, 1), (B, 1)
 
-        t_d = cv_ops.affine_transform_2d(
-            rotation=rot, trans_x=tx, trans_y=ty).squeeze(1)  # (B, 3, 3)
+        t_d = cv_ops.affine_transform_2d(rotation=rot, trans_x=tx, trans_y=ty)  # (B, 3, 3)
 
         t_out = t_in @ t_d  # (B, 3, 3)
         return t_out
 
 
 class ContextAwarePathIntegrator(nn.Module):
-    def __init__(self, action_dim, hidden_dims=(32, )):
+    def __init__(self, action_dim, hidden_dims=(32,)):
         super().__init__()
         self.step_integrator = ContextAwareStepIntegrator(action_dim, hidden_dims)
 

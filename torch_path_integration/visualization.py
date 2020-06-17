@@ -27,6 +27,7 @@ class PathVisualizer:
         self.marker_cycle = marker_cycle
 
     def plot(self, *paths):
+        # paths: [(Ti, 2)] * B
         batch_size = len(paths[0])
         color_cycle = self.color_cycle or self.cmap(np.linspace(0, 1, len(paths)))
 
