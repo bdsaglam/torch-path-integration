@@ -14,8 +14,8 @@ class ActionPoseEstimator(nn.Module):
 
     def forward(self, action):
         pose = self.linear(action)
-        drot, dx, dy = pose.split(1, -1)
-        return drot * np.pi, dx, dy
+        rot, tx, ty = pose.split(1, -1)
+        return rot * np.pi, tx, ty
 
 
 class ContextAwareStepIntegrator(nn.Module):
@@ -37,14 +37,13 @@ class ContextAwareStepIntegrator(nn.Module):
         :return: torch.tensor, [B, 3, 3], estimated transformation matrix
         """
 
-        drot, dx, dy = self.action_pose_estimator(action)  # (B, 1), (B, 1), (B, 1)
-        t_a = cv_ops.affine_transform_2d(rotation=drot, trans_x=dx, trans_y=dy)  # (B, 3, 3)
+        drot, dtx, dty = self.action_pose_estimator(action)  # (B, 1), (B, 1), (B, 1)
+        t_a = cv_ops.affine_transform_2d(rotation=drot, trans_x=dtx, trans_y=dty)  # (B, 3, 3)
         pose_act = cv_ops.remove_homogeneous(t_a)  # (B, 6)
 
         pose_in = cv_ops.remove_homogeneous(t_in)  # (B, 6)
 
         pose = torch.cat([pose_in, pose_act], -1)  # (B, 12)
-
         rot, tx, ty = self.context_pose_estimator(pose).split(1, -1)  # (B, 1), (B, 1), (B, 1)
 
         t_d = cv_ops.affine_transform_2d(rotation=rot, trans_x=tx, trans_y=ty)  # (B, 3, 3)

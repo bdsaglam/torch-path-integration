@@ -175,7 +175,7 @@ class PIMExperiment2(LightningModule):
 
     def loss(self, res):
         t_target = cv_ops.make_transform(res.target_orientation, res.target_location)
-        return F.mse_loss(res.t_out, t_target)
+        return F.mse_loss(res.t_out, t_target, reduction='sum') / t_target.shape[0]
 
     def training_step(self, batch, batch_idx):
         res = self.inference(batch, batch_idx)
