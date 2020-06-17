@@ -4,6 +4,7 @@ from argparse import ArgumentParser, Namespace
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torch.nn.functional as F
 import yaml
 from monty.collections import AttrDict
 from pytorch_lightning import LightningModule, Trainer, seed_everything
@@ -150,12 +151,17 @@ class PIMExperiment2(LightningModule):
         t_out = self.model(t_init, action, t_target, mask)
 
         return AttrDict(t_out=t_out,
-                        target_location=target_location,
-                        target_orientation=target_orientation)
+                        target_orientation=target_orientation,
+                        target_location=target_location)
+
+    def loss(self, res):
+        t_target = cv_ops.make_transform(res.target_orientation, res.target_location)
+        return F.mse_loss(res.t_out, t_target)
 
     def training_step(self, batch, batch_idx):
         res = self.inference(batch)
-        loss = self.model.loss(res.t_out, res.target_location, res.target_orientation)
+        loss = self.loss(res)
+
         log = dict(
             loss=loss.detach(),
         )
@@ -163,7 +169,7 @@ class PIMExperiment2(LightningModule):
 
     def validation_step(self, batch, batch_idx):
         res = self.inference(batch)
-        loss = self.model.loss(res.t_out, res.target_location, res.target_orientation)
+        loss = self.loss(res)
         out = dict(val_loss=loss)
         if batch_idx == 0:
             out.update(batch=batch)

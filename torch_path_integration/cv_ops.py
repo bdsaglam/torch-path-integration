@@ -75,3 +75,13 @@ def apply_nonlinear(transformation_params):
     rot *= np.pi
 
     return torch.cat([rot, sx, sy, sh, tx, ty], -1)
+
+
+def make_transform(orientation, location):  # (..., 1), (..., 2)
+    assert len(orientation.shape) == len(orientation.shape)
+    assert orientation.shape[:-1] == orientation.shape[:-1]
+
+    rot = orientation.squeeze(-1)
+    tx, ty = location[..., 0], location[..., 1]
+    tm = affine_transform_2d(rotation=rot, trans_x=tx, trans_y=ty)  # (..., 3, 3)
+    return tm

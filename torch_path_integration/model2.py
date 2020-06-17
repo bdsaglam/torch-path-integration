@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from torch_path_integration import cv_ops
 
@@ -29,11 +28,52 @@ class StepIntegrator(nn.Module):
         t_act = cv_ops.affine_transform_2d(rotation=drot, trans_x=dx, trans_y=dy)
         return t_in @ t_act
 
-    def loss(self, t_out, target_location, target_orientation):
-        rot = target_orientation.squeeze(-1)
-        tx, ty = target_location[..., 0], target_location[..., 1]
-        t_gt = cv_ops.affine_transform_2d(rotation=rot, trans_x=tx, trans_y=ty)
-        return F.mse_loss(t_out, t_gt)
+
+class ContextAwareStepIntegrator(nn.Module):
+    def __init__(self, action_dim):
+        super().__init__()
+        self.action_converter = ActionConverter(action_dim)
+        self.linear = nn.Sequential(
+            nn.Linear(6 + 6, 32),
+            nn.ReLU(),
+            nn.Linear(32, 3),
+        )
+
+    def forward(self, t_in, action):
+        """
+        Performs path-integration starting from initial transformation matrix,
+        t_init, and applying actions successively.
+        The errors occur at any time step accumulates over whole sequence.
+        Therefore, the network needs a correction signal to perform ,
+        path-integration module looks at 'true' transformation state, t_direct,
+        at randomly selected time steps. The 'true' transformation state can be
+        an inference by another network using other modalities such as vision
+        or it can be derived from ground truth location and orientation.
+        The mask is used to determine at which time steps to look at t_direct.
+
+        For any time step,
+            `T_new = T_old @ T_diff`
+
+        :param t_ctx: torch.tensor, [B, 3, 3], initial transformation matrix
+        :param action: torch.tensor, [B, A], encoded action
+        :return: torch.tensor, [B, 3, 3], target transformation matrix
+        """
+
+        pose_in = cv_ops.remove_homogenous(t_in)  # (B, 6)
+
+        drot, dx, dy = self.action_converter(action)  # (B, ), (B, ), (B, )
+        t_a = cv_ops.affine_transform_2d(rotation=drot, trans_x=dx, trans_y=dy)  # (B, 3, 3)
+        pose_act = cv_ops.remove_homogenous(t_a)  # (B, 6)
+
+        pose = torch.cat([pose_in, pose_act], -1)  # (B, 12)
+
+        rot, tx, ty = [t.squeeze(-1) for t in self.linear(pose).split(1, -1)]  # (B, ), (B, ), (B, )
+
+        t_d = cv_ops.affine_transform_2d(rotation=rot, trans_x=tx, trans_y=ty)  # (B, 3, 3)
+
+        t_out = t_in @ t_d  # (B, 3, 3)
+
+        return t_out
 
 
 class ContextAwarePathIntegrator(nn.Module):
@@ -100,10 +140,3 @@ class ContextAwarePathIntegrator(nn.Module):
                 t_ctx = t_out
 
         return torch.stack(t_outs, 1)  # (B, T, 3, 3)
-
-    def loss(self, t_out, target_location, target_orientation):
-        rot = target_orientation.squeeze(-1)
-        tx, ty = target_location[..., 0], target_location[..., 1]
-        t_gt = cv_ops.affine_transform_2d(
-            rotation=rot, trans_x=tx, trans_y=ty)
-        return F.mse_loss(t_out, t_gt)
