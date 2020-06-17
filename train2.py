@@ -15,7 +15,7 @@ from torch.utils.data import random_split
 
 from torch_path_integration import cv_ops, visualization
 from torch_path_integration.datasets import WestWorldDataset, MouseDataset
-from torch_path_integration.model2 import ContextAwarePathIntegrator, PathIntegrator
+from torch_path_integration.model2 import ContextAwarePathIntegrator
 from torch_path_integration.optimizers import RAdam, LookAhead
 from torch_path_integration.visualization import PathVisualizer
 
@@ -27,7 +27,7 @@ class PIMExperiment2(LightningModule):
         super().__init__()
 
         self.hparams = hparams
-        self.model = PathIntegrator(**hparams.model)
+        self.model = ContextAwarePathIntegrator(**hparams.model)
         self.path_vis = self.make_path_visualizer()
 
     def make_path_visualizer(self):
@@ -134,12 +134,20 @@ class PIMExperiment2(LightningModule):
         (initial_location, initial_orientation, action), (target_location, target_orientation) = batch
         B, T = target_location.shape[:2]
 
-        rot = torch.cat([initial_orientation, target_orientation], -2).squeeze(-1)[:, :-1]
-        location = torch.cat([initial_location, target_location], -2)[:, :-1, :]
-        tx, ty = location[..., 0], location[..., 1]
-        t_in = cv_ops.affine_transform_2d(rotation=rot, trans_x=tx, trans_y=ty)
-
-        t_out = self.model(t_in, action)
+        # (B, 1, 3, 3)
+        t_init = cv_ops.affine_transform_2d(
+            rotation=initial_orientation[:, :, 0],
+            trans_x=initial_location[:, :, 0],
+            trans_y=initial_location[:, :, 1],
+        )
+        # (B, T, 3, 3)
+        t_target = cv_ops.affine_transform_2d(
+            rotation=target_orientation[:, :, 0],
+            trans_x=target_location[:, :, 0],
+            trans_y=target_location[:, :, 1],
+        )
+        mask = torch.rand(B, T) < 0.2  # (B, T)
+        t_out = self.model(t_init, action, t_target, mask)
 
         return AttrDict(t_out=t_out,
                         target_location=target_location,
