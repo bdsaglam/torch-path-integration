@@ -37,11 +37,11 @@ class ContextAwareStepIntegrator(nn.Module):
         :return: torch.tensor, [B, 3, 3], estimated transformation matrix
         """
 
-        pose_in = cv_ops.remove_homogeneous(t_in)  # (B, 6)
-
         drot, dx, dy = self.action_pose_estimator(action)  # (B, 1), (B, 1), (B, 1)
         t_a = cv_ops.affine_transform_2d(rotation=drot, trans_x=dx, trans_y=dy)  # (B, 3, 3)
         pose_act = cv_ops.remove_homogeneous(t_a)  # (B, 6)
+
+        pose_in = cv_ops.remove_homogeneous(t_in)  # (B, 6)
 
         pose = torch.cat([pose_in, pose_act], -1)  # (B, 12)
 
