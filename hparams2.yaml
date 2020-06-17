@@ -1,6 +1,9 @@
 model:
   action_dim: 4
-  hidden_dims: [64, 32]
+  hidden_dims: [32, 32]
+
+# misc params
+anchor_rate: 0.05
 
 # data params
 dataset_type: "westworld"

@@ -144,7 +144,7 @@ class PIMExperiment2(LightningModule):
         T = batch[0][2].shape[1]
         B = self.hparams.batch_size
 
-        mask = torch.rand(B, T) < 0.2  # (B, T)
+        mask = torch.rand(B, T) < self.hparams.anchor_rate  # (B, T)
         self.mask_cache.append(mask)
         return mask
 

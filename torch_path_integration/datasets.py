@@ -12,7 +12,7 @@ from torch.utils.data import Dataset
 class MouseDataset(Dataset):
     def __init__(self, root, env_size, load_from_disk_period=256):
         self.root = pathlib.Path(root)
-        self.file_list = list(self.root.glob('*'))
+        self.file_list = sorted(list(self.root.glob('*')))
         self.num_records_per_file = 10_000
         self.load_from_disk_period = load_from_disk_period
         self.env_size = float(env_size)

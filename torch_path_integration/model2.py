@@ -14,13 +14,12 @@ class ActionPoseEstimator(nn.Module):
 
     def forward(self, action):
         delta = self.linear(action)
-        drot_logit, dx, dy = delta[..., 0], delta[..., 1], delta[..., 2]
-        drot = drot_logit * np.pi
-        return drot, dx, dy
+        drot, dx, dy = delta[..., 0], delta[..., 1], delta[..., 2]
+        return drot * np.pi, dx, dy
 
 
 class ContextAwareStepIntegrator(nn.Module):
-    def __init__(self, action_dim, hidden_dims=(32, 32)):
+    def __init__(self, action_dim, hidden_dims=(32, )):
         super().__init__()
         self.action_pose_estimator = ActionPoseEstimator(action_dim)
 
@@ -56,7 +55,7 @@ class ContextAwareStepIntegrator(nn.Module):
 
 
 class ContextAwarePathIntegrator(nn.Module):
-    def __init__(self, action_dim, hidden_dims=(32, 32)):
+    def __init__(self, action_dim, hidden_dims=(32, )):
         super().__init__()
         self.step_integrator = ContextAwareStepIntegrator(action_dim, hidden_dims)
 
