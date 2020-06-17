@@ -2,8 +2,8 @@ import pathlib
 from argparse import ArgumentParser, Namespace
 
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
-import torch.nn.functional as F
 import yaml
 from monty.collections import AttrDict
 from pytorch_lightning import LightningModule, Trainer, seed_everything
@@ -13,24 +13,43 @@ from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 from torch.utils.data import random_split
 
+from torch_path_integration import cv_ops, visualization
 from torch_path_integration.datasets import WestWorldDataset, MouseDataset
-from torch_path_integration.ensembles import PlaceCellEnsemble, HeadDirectionCellEnsemble
-from torch_path_integration.model import PathIntegrationModule
+from torch_path_integration.model2 import ContextAwarePathIntegrator, PathIntegrator
 from torch_path_integration.optimizers import RAdam, LookAhead
-from torch_path_integration.visualization import plot_location_predictions, fig_to_tensor
+from torch_path_integration.visualization import PathVisualizer
 
 Tensor = torch.Tensor
 
 
-class PIMExperiment(LightningModule):
+class PIMExperiment2(LightningModule):
     def __init__(self, hparams) -> None:
         super().__init__()
 
-        self.pce = PlaceCellEnsemble(**hparams.place_cell_ensemble)
-        self.hdce = HeadDirectionCellEnsemble(**hparams.head_direction_cell_ensemble)
-        self.model = PathIntegrationModule(**hparams.model)
         self.hparams = hparams
-        self.current_device = None
+        self.model = PathIntegrator(**hparams.model)
+        self.path_vis = self.make_path_visualizer()
+
+    def make_path_visualizer(self):
+        bg_image = None
+
+        root = pathlib.Path(self.hparams.data_dir)
+        fp = root / 'top_view.png'
+        if fp.exists():
+            from PIL import Image
+
+            image = Image.open(fp)
+            img = np.asarray(image)
+
+            pad = 36
+            crop_img = img[pad:-pad, pad:-pad]
+
+            h, w, c = crop_img.shape
+            alpha = np.full((h, w, 1), fill_value=100)
+            bg_image = np.concatenate([crop_img, alpha], -1)
+
+        pv = PathVisualizer(background_image=bg_image, figsize_per_example=(6, 6))
+        return pv
 
     @staticmethod
     def add_argparse_args(parent_parser):
@@ -112,62 +131,32 @@ class PIMExperiment(LightningModule):
 
     def inference(self, batch):
         # (B, 1, 2), (B, 1, 1), (B, T, A), (B, T, 2), (B, T, 1)
-        (initial_location, initial_orientation, velocity), (target_location, target_orientation) = batch
+        (initial_location, initial_orientation, action), (target_location, target_orientation) = batch
         B, T = target_location.shape[:2]
 
-        initial_place = self.pce.encode(initial_location.view(B, -1)).view(B, -1)
-        initial_hd = self.hdce.encode(initial_orientation.view(B, -1)).view(B, -1)
+        rot = torch.cat([initial_orientation, target_orientation], -2).squeeze(-1)[:, :-1]
+        location = torch.cat([initial_location, target_location], -2)[:, :-1, :]
+        tx, ty = location[..., 0], location[..., 1]
+        t_in = cv_ops.affine_transform_2d(rotation=rot, trans_x=tx, trans_y=ty)
 
-        target_place = self.pce.encode(target_location.view(B * T, -1)).view(B, T, -1)
-        target_hd = self.hdce.encode(target_orientation.view(B * T, -1)).view(B, T, -1)
+        t_out = self.model(t_in, action)
 
-        grids = []
-        places = []
-        hds = []
-        hx, cx = self.model.initial_hidden_state(initial_place, initial_hd)
-        for i in range(T):
-            v = velocity[:, i, :]  # (B, A)
-            grid, place, hd, (hx, cx) = self.model(v, (hx, cx))
-            grids.append(grid)
-            places.append(place)
-            hds.append(hd)
-
-        grid = torch.stack(grids, 0).permute(1, 0, 2).contiguous()
-        place = torch.stack(places, 0).permute(1, 0, 2).contiguous()
-        hd = torch.stack(hds, 0).permute(1, 0, 2).contiguous()
-
-        return AttrDict(
-            initial_place=initial_place,
-            initial_hd=initial_hd,
-            target_place=target_place,
-            target_hd=target_hd,
-            grid=grid,
-            place_log_prob=place,
-            hd_log_prob=hd,
-        )
-
-    def loss(self, res):
-        loss_pc = F.kl_div(res.place_log_prob, res.target_place, reduction='batchmean')
-        loss_hdc = F.kl_div(res.hd_log_prob, res.target_hd, reduction='batchmean')
-        loss_reg = self.hparams.loss['grid_l2_loss_weight'] * self.model.reg_loss()
-        loss = loss_pc + loss_hdc + loss_reg
-        return AttrDict(loss=loss, loss_pc=loss_pc, loss_hdc=loss_hdc, loss_reg=loss_reg)
+        return AttrDict(t_out=t_out,
+                        target_location=target_location,
+                        target_orientation=target_orientation)
 
     def training_step(self, batch, batch_idx):
         res = self.inference(batch)
-        loss_res = self.loss(res)
+        loss = self.model.loss(res.t_out, res.target_location, res.target_orientation)
         log = dict(
-            loss=loss_res.loss.detach(),
-            loss_pc=loss_res.loss_pc.detach(),
-            loss_hdc=loss_res.loss_hdc.detach(),
-            loss_reg=loss_res.loss_reg.detach(),
+            loss=loss.detach(),
         )
-        return dict(loss=loss_res.loss, log=log)
+        return dict(loss=loss, log=log)
 
     def validation_step(self, batch, batch_idx):
         res = self.inference(batch)
-        loss_res = self.loss(res)
-        out = dict(val_loss=loss_res.loss)
+        loss = self.model.loss(res.t_out, res.target_location, res.target_orientation)
+        out = dict(val_loss=loss)
         if batch_idx == 0:
             out.update(batch=batch)
             out.update(res=res)
@@ -190,21 +179,15 @@ class PIMExperiment(LightningModule):
         B = min(8, target_location.shape[0])
         T = target_location.shape[1]
 
-        place_prob = res.place_log_prob[:B].exp()
+        rot, sx, sy, sh, tx, ty = cv_ops.decompose_transformation_matrix(res.t_out[:B])
+        pred_path = torch.stack([tx, ty], -1).detach().numpy()
 
-        soft_pred_location = self.pce.decode(place_prob.view(B * T, -1), strategy='soft') \
-            .view(B, T, -1).detach().numpy()
-        loc_fig = plot_location_predictions(initial_location[:B], soft_pred_location, target_location[:B])
-        loc_vis = fig_to_tensor(loc_fig)
+        gt_path = torch.cat([initial_location[:B], target_location[:B]], 1).numpy()
+
+        loc_fig = self.path_vis.plot(gt_path, pred_path)
+        loc_vis = visualization.fig_to_tensor(loc_fig)
         plt.close(loc_fig)
-        self.logger.experiment.add_image('location_soft', loc_vis, self.current_epoch)
-
-        hard_pred_location = self.pce.decode(place_prob.view(B * T, -1), strategy='hard') \
-            .view(B, T, -1).detach().numpy()
-        hard_loc_fig = plot_location_predictions(initial_location[:B], hard_pred_location, target_location[:B])
-        hard_loc_vis = fig_to_tensor(hard_loc_fig)
-        plt.close(hard_loc_fig)
-        self.logger.experiment.add_image('location_hard', hard_loc_vis, self.current_epoch)
+        self.logger.experiment.add_image('paths', loc_vis, self.current_epoch)
 
 
 if __name__ == '__main__':
@@ -222,7 +205,7 @@ if __name__ == '__main__':
     hparams_file = pathlib.Path(args.hparams_file)
     hparams = yaml.safe_load(hparams_file.read_text())
 
-    experiment = PIMExperiment(
+    experiment = PIMExperiment2(
         hparams=Namespace(**hparams),
     )
 

@@ -2,12 +2,8 @@ import json
 import pathlib
 import random
 
-import matplotlib
-import pandas as pd
-
-matplotlib.use('TkAgg')
-
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
@@ -101,4 +97,4 @@ class WestWorldDataset(Dataset):
         target_location = location[1:]  # (T, 2)
         target_orientation = orientation[1:]  # (T, 1)
 
-        return (initial_location, initial_orientation, velocity), (target_location, target_orientation)
+        return (initial_location, -initial_orientation, velocity), (target_location, -target_orientation)

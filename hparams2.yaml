@@ -1,0 +1,24 @@
+model:
+  action_dim: 4
+
+# data params
+dataset_type: "westworld"
+data_dir: "/Users/bdsaglam/westworld-data/ww-64x64-s31"
+batch_size: 256
+num_workers: 2
+
+# optimizer params
+optimizer_type: RMSprop
+learning_rate: 0.0001
+weight_decay: 0.00001
+look_ahead: False
+look_ahead_k: 5
+look_ahead_alpha: 0.5
+use_lr_scheduler: False
+lr_scheduler_decay_rate: 0.95
+
+# trainer params
+trainer:
+  max_epochs: 200
+  gradient_clip_val: 0
+#  resume_from_checkpoint: "/Users/bdsaglam/PycharmProjects/torch-path-integration/lightning_logs/version_15/checkpoints/epoch=97.ckpt"

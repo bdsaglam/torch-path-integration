@@ -59,3 +59,5 @@ class PathIntegrationModule(nn.Module):
 
     def reg_loss(self):
         return self.grid_layer.weight.norm(2)
+
+
